@@ -144,7 +144,8 @@ class SVHDDigitOnlyDigitDataset(Dataset):
         self.transform = transforms.Compose([
             transforms.Resize((32, 32)),
             transforms.ToTensor(),
-            transforms.Normalize(mean=[0.4342, 0.4431, 0.4768], std=[0.1927, 0.1956, 0.1931]),
+            #transforms.Normalize(mean=[0.4342, 0.4431, 0.4768], std=[0.1927, 0.1956, 0.1931]),
+            #transforms.Lambda(lambda x: x / 255.0),
         ])
 
     def __len__(self):
