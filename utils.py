@@ -187,6 +187,66 @@ def detect_digit_from_image(img_path, model, output_image_path, device):
     cv2.imwrite(output_image_path, image)
 
 
+def detect_digit_from_image_reconstruct(img_path, model,vgg16, output_image_path, device, num):
+    # Load your model
+    #model.load_state_dict(torch.load('best_model.pth'))
+    model.eval()
+
+    # Load the image (now in color)
+    image = cv2.imread(img_path)
+
+    # Define the window size and step size
+    win_size = 16
+    window_size = (win_size, win_size)
+    print('image:', image.shape)
+    window_size = (int(image.shape[0]//5), int(image.shape[1]//5))
+    step_size = 10
+
+    # List to store bounding box coordinates and predictions
+    bbox_coords = []
+    final_bbox_coords = []
+    losses_array = []
+    predicted_arr = []
+    red_arr = []
+
+    # Sliding window
+    for y in range(0, image.shape[0] - window_size[1], step_size):
+        for x in range(0, image.shape[1] - window_size[0], step_size):
+            # Extract and preprocess the window
+            window = image[y:y + window_size[1], x:x + window_size[0]]
+            processed_window = cv2.resize(window, (32, 32))
+            processed_window = transforms.ToTensor()(processed_window)
+            #processed_window = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])(processed_window)
+            processed_window = processed_window.unsqueeze(0).to(torch.float32).to(device)
+            #print('processed_window:', processed_window.shape)
+            # Classify the window
+            with torch.no_grad():
+                x_reconstructed, mu, log_var  = model(processed_window)
+                loss = vae_loss(x_reconstructed, processed_window, mu, log_var)
+                losses_array.append(loss.item())
+                #_, predicted = torch.max(outputs, 1)
+                bbox_coords.append((x, y, x + window_size[0], y + window_size[1], loss.item()))
+
+                with torch.no_grad():
+                    outputs = vgg16(processed_window)
+                    _, predicted = torch.max(outputs, 1)
+                    predicted_arr.append(predicted.item())
+                
+
+    sorted_lst_asc = sorted(losses_array)[::-1]
+    limit_loss = sorted_lst_asc[num]
+    for bbox, lss, pred in zip(bbox_coords, losses_array, predicted_arr):
+        if lss > limit_loss:
+            final_bbox_coords.append(bbox)
+            red_arr.append(pred)
+    # Draw bounding boxes and text on the original image
+    for (x1, y1, x2, y2, prediction), pred_digit in zip(final_bbox_coords, red_arr):
+        print('prediction:',pred_digit)
+        cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 1)
+        cv2.putText(image, str(pred_digit), (x1, y1+10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+
+    # Save the final image with bounding boxes and text
+    cv2.imwrite(output_image_path, image)
 
 def vae_loss(reconstructed_x, x, mu, log_var):
     reconstruction_loss = F.binary_cross_entropy(reconstructed_x, x, reduction='sum')
